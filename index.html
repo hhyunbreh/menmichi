@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>멘미치(麺道) - 대동여지도</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;500;700;900&display=swap" rel="stylesheet">
+    
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=9112aa4b875e3aa696112272cf0f17af"></script>
+
+    <style>
+        /* ==================== 스타일 (CSS) ==================== */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg-paper: #fdfbf7; --gold-pine: #d4af37; --ink-black: #0f0f0f;
+            --font-main: 'Noto Serif KR', serif;
+        }
+        body {
+            background-color: var(--bg-paper);
+            background-image: url("https://www.transparenttextures.com/patterns/cream-paper.png");
+            color: var(--ink-black); font-family: var(--font-main);
+            display: flex; justify-content: center; height: 100vh; overflow: hidden;
+        }
+        .container {
+            width: 100%; max-width: 480px; background: #fff;
+            border-left: 3px double var(--gold-pine); border-right: 3px double var(--gold-pine);
+            position: relative; height: 100%;
+        }
+
+        /* 벚꽃 효과 */
+        .cherry-blossoms span {
+            position: absolute; width:8px; height:8px; background:#ffb7b2; border-radius:50% 0 50% 50%;
+            opacity:0; z-index:100; pointer-events: none; animation:fall linear infinite;
+        }
+        @keyframes fall { 0% {opacity:0; transform:translateY(-10%)} 20%{opacity:0.8} 100%{opacity:0; transform:translateY(800px) rotate(360deg)} }
+
+        /* 지도 화면 */
+        #map-view { width: 100%; height: 100%; position: relative; }
+        .map-header {
+            position: absolute; top: 20px; left: 20px; z-index: 20;
+            background: rgba(255,255,255,0.95); padding: 12px 20px; border-radius: 8px;
+            border: 1px solid var(--gold-pine); box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        }
+        .map-header h1 { font-size: 1.4rem; font-weight: 900; margin: 0; letter-spacing: -1px; }
+        .map-header p { font-size: 0.8rem; color: #666; margin: 4px 0 0; font-weight: 500; }
+        #main-map { width: 100%; height: 100%; }
+        
+        /* 🥘 필터 버튼 */
+        .filter-bar {
+            position: absolute; top: 90px; left: 0; width: 100%; z-index: 20;
+            padding: 0 15px; display: flex; gap: 8px; overflow-x: auto;
+            white-space: nowrap; scrollbar-width: none;
+        }
+        .filter-bar::-webkit-scrollbar { display: none; }
+        .filter-btn {
+            background: rgba(255,255,255,0.95); border: 1px solid #ddd;
+            border-radius: 20px; padding: 6px 14px; font-size: 0.8rem; font-weight: 700;
+            color: #555; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: all 0.2s; font-family: var(--font-main);
+        }
+        .filter-btn.active {
+            background: var(--ink-black); color: #fff; border-color: var(--ink-black);
+        }
+
+        /* 📍 지도 마커 (심플한 금색 점) */
+        .customoverlay { 
+            position: absolute; left: 0; bottom: 0; 
+            width: 20px; height: 20px;
+            cursor: pointer; 
+            transform: translate(-50%, -50%); 
+            z-index: 10;
+        }
+        .gold-dot {
+            width: 100%; height: 100%;
+            background-color: var(--gold-pine); border: 2px solid #fff;
+            border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .customoverlay:hover .gold-dot {
+            transform: scale(1.8); background-color: #ffd700; box-shadow: 0 0 15px rgba(255, 215, 0, 0.8); z-index: 100;
+        }
+
+        /* 상세 페이지 */
+        #detail-view {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 85%;
+            background: rgba(255,255,255,0.98);
+            border-top-left-radius: 20px; border-top-right-radius: 20px;
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.2);
+            z-index: 50; overflow-y: auto; padding-bottom: 40px;
+            transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        #detail-view.hidden { transform: translateY(110%); }
+        .btn-back {
+            width: 100%; padding: 15px; border: none; background: #fff;
+            font-weight: 700; color: var(--gold-pine); cursor: pointer;
+            border-bottom: 1px dashed #eee; position: sticky; top: 0; z-index: 10;
+        }
+        /* 상세 내용 */
+        .detail-header { padding: 30px 30px 10px; text-align: left; }
+        .shop-badge { border:1px solid var(--gold-pine); color:var(--gold-pine); padding:4px 10px; font-size:0.75rem; border-radius:50px; background:#fff; font-weight:700;}
+        h1#detail-title { font-size:1.8rem; margin:12px 0; font-weight:900; letter-spacing: -1px;}
+        .shop-info { color:#666; font-size:0.95rem; }
+        .lantern-icon { color:#c41e3a; font-size:1.4rem; vertical-align:middle; filter:drop-shadow(0 0 5px #c41e3a); margin-left:5px; }
+        
+        /* 여권 인증 */
+        .passport-section { padding: 10px 30px; margin-top: 10px; text-align: center; }
+        .btn-passport { width: 100%; padding: 12px; border: 2px dashed #ccc; background: #f9f9f9; color: #888; font-weight: 700; border-radius: 8px; cursor: pointer; transition: all 0.3s; }
+        .btn-passport.verified { background: #fff; border: 2px solid var(--gold-pine); color: var(--gold-pine); box-shadow: 0 0 10px rgba(212, 175, 55, 0.3); }
+        .passport-msg { font-size: 0.8rem; color: #999; margin-top: 5px; }
+
+        /* 도장 */
+        .stamp-section { padding: 20px 30px; }
+        .stamp-grid { display:flex; flex-direction:column; gap:14px; }
+        .stat-row { display:flex; justify-content:space-between; align-items:center; }
+        .stat-label { font-size:0.95rem; font-weight:700; width:30%; text-align:right; padding-right:15px; color: #333; }
+        .stat-stamps { display:flex; gap:6px; width:70%; }
+        .stamp { width:22px; height:22px; border:2px solid #ddd; border-radius:50%; transition: all 0.3s; }
+        .stamp.filled { background:#c41e3a; border-color:#c41e3a; box-shadow:0 0 5px #c41e3a; transform: scale(1.1); }
+        .flavor-text { text-align:center; font-style:italic; color:#666; margin-top:30px; font-weight: 500; font-size: 1rem; }
+        
+        /* 버튼 */
+        .revenue-section { padding: 30px 20px; border-top: 2px dotted var(--gold-pine); background: rgba(255,248,225,0.5); margin-top: 20px; }
+        .btn { width: 100%; padding: 16px; border-radius: 8px; border: none; margin-bottom: 12px; cursor: pointer; font-weight: 700; font-size: 1rem; }
+        .btn-affiliate { background: #0f0f0f; color: #fff; display: flex; flex-direction: column; align-items: center; text-decoration: none; }
+        .btn-donation { background: #fff; color: var(--gold-pine); border: 2px solid var(--gold-pine); display: flex; flex-direction: column; align-items: center; }
+        .sub-text { font-size: 0.75rem; font-weight: 400; margin-top: 4px; opacity: 0.8; }
+        .sub-text-gold { color: var(--gold-pine); opacity: 1; font-weight: 500; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="cherry-blossoms" id="cherry-container"></div>
+
+        <div id="map-view">
+            <header class="map-header">
+                <h1>멘미치 (麺道)</h1>
+                <p>전국 라멘 대동여지도</p>
+            </header>
+             <div class="filter-bar">
+                <button class="filter-btn" onclick="filterMap('all')">전체</button>
+                <button class="filter-btn" onclick="filterMap('돈코츠')">돈코츠</button>
+                <button class="filter-btn" onclick="filterMap('시오쇼유')">시오/쇼유</button>
+                <button class="filter-btn" onclick="filterMap('마제탄탄')">마제/탄탄</button>
+                <button class="filter-btn" onclick="filterMap('기타')">기타</button>
+            </div>
+            <div id="main-map"></div>
+        </div>
+
+        <div id="detail-view" class="hidden">
+            <button class="btn-back" onclick="closeDetail()">↓ 지도 닫기</button>
+            <header class="detail-header">
+                <span class="shop-badge" id="detail-badge"></span>
+                <h1 id="detail-title"></h1>
+                <div class="shop-info" id="detail-desc"></div>
+            </header>
+            
+            <div class="passport-section">
+                <button id="btn-verify" class="btn-passport" onclick="verifyVisit()">
+                    📍 가게 방문 인증하기 (도장 쾅!)
+                </button>
+                <p class="passport-msg" id="passport-msg">아직 방문하지 않은 수행지입니다.</p>
+            </div>
+
+            <section class="stamp-section">
+                <h2>면식 수행 능력치 (麺食力)</h2>
+                <div class="stamp-grid" id="ramen-stats"></div>
+                <p class="flavor-text" id="detail-flavor"></p>
+            </section>
+            <section class="revenue-section">
+                <a href="https://www.coupang.com" target="_blank" class="btn btn-affiliate">
+                    🏠 집에서 즐기는 <b>'이치란 라멘'</b>
+                    <span class="sub-text">(로켓배송 최저가 확인)</span>
+                </a>
+                <button class="btn btn-donation">
+                    ☕ 개발자에게 <b>'공기밥'</b> 추가
+                    <span class="sub-text sub-text-gold">(후원 시 '황금 홍등' 획득)</span>
+                </button>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        const ramenDB = [
+            { id: 1, type: "기타", name: "오레노(합정)", lat: 37.5486, lng: 126.9135, badge: "미슐랭 빕 구르망", location: "서울 합정 • 토리파이탄", flavor: "진하고 크리미한 닭 백탕의 정수", stats: [{l:"염도",s:4},{l:"농도",s:5},{l:"면",s:2},{l:"토핑",s:3},{l:"풍미",s:4}] },
+            { id: 2, type: "돈코츠", name: "잇텐고", lat: 37.5492, lng: 126.9128, badge: "인기", location: "서울 합정 • 바질라멘", flavor: "향긋한 바질과 돈코츠의 충격적 조화", stats: [{l:"염도",s:3},{l:"농도",s:3},{l:"면",s:2},{l:"토핑",s:4},{l:"풍미",s:5}] },
+            { id: 3, type: "시오쇼유", name: "담택", lat: 37.5505, lng: 126.9155, badge: "미슐랭 빕 구르망", location: "서울 합정 • 시오라멘", flavor: "깔끔하고 깊은 소금 육수의 끝판왕", stats: [{l:"염도",s:3},{l:"농도",s:2},{l:"면",s:3},{l:"토핑",s:3},{l:"풍미",s:4}] },
+            { id: 4, type: "돈코츠", name: "하쿠텐", lat: 37.5615, lng: 126.9255, badge: "웨이팅 필수", location: "서울 연남 • 이에케", flavor: "밥을 부르는 꾸덕한 이에케(가정식)", stats: [{l:"염도",s:5},{l:"농도",s:5},{l:"면",s:4},{l:"토핑",s:5},{l:"풍미",s:5}] },
+            { id: 5, type: "기타", name: "566라멘", lat: 37.5635, lng: 126.9248, badge: "매니아 전용", location: "서울 연남", flavor: "압도적인 양과 기름, 마늘의 지로계", stats: [{l:"염도",s:5},{l:"농도",s:5},{l:"면",s:5},{l:"토핑",s:5},{l:"풍미",s:5}] },
+            { id: 6, type: "시오쇼유", name: "사루카메", lat: 37.5618, lng: 126.9265, badge: "바지락 육수", location: "서울 연남", flavor: "바지락의 시원함과 쇼유의 감칠맛", stats: [{l:"염도",s:4},{l:"농도",s:2},{l:"면",s:3},{l:"토핑",s:4},{l:"풍미",s:5}] },
+            { id: 7, type: "시오쇼유", name: "마시타야", lat: 37.5552, lng: 126.9245, badge: "블랙라멘", location: "서울 홍대", flavor: "깊은 풍미의 블랙 쇼유 라멘", stats: [{l:"염도",s:4},{l:"농도",s:3},{l:"면",s:3},{l:"토핑",s:3},{l:"풍미",s:4}] },
+            { id: 8, type: "기타", name: "이리에", lat: 37.5495, lng: 126.9142, badge: "도미 육수", location: "서울 합정", flavor: "도미를 통째로 넣은 진한 생선 육수", stats: [{l:"염도",s:4},{l:"농도",s:4},{l:"면",s:2},{l:"토핑",s:3},{l:"풍미",s:5}] },
+            { id: 9, type: "돈코츠", name: "라멘트럭", lat: 37.5475, lng: 126.9225, badge: "입문자 추천", location: "서울 상수", flavor: "호불호 없는 담백한 돈코츠", stats: [{l:"염도",s:3},{l:"농도",s:3},{l:"면",s:2},{l:"토핑",s:5},{l:"풍미",s:3}] },
+            { id: 10, type: "시오쇼유", name: "멘야준", lat: 37.5568, lng: 126.9165, badge: "시원함", location: "서울 서교", flavor: "깔끔하고 맑은 시오 라멘", stats: [{l:"염도",s:3},{l:"농도",s:1},{l:"면",s:2},{l:"토핑",s:3},{l:"풍미",s:4}] },
+            { id: 11, type: "돈코츠", name: "쿄라멘", lat: 37.5630, lng: 126.9250, badge: "돈코츠 정석", location: "서울 연남", flavor: "냄새 없이 진국인 돈코츠 라멘", stats: [{l:"염도",s:4},{l:"농도",s:5},{l:"면",s:1},{l:"토핑",s:3},{l:"풍미",s:3}] },
+            { id: 12, type: "시오쇼유", name: "세상끝의", lat: 37.5508, lng: 126.9148, badge: "감성", location: "서울 합정", flavor: "오사카 스타일의 맑은 중화소바", stats: [{l:"염도",s:4},{l:"농도",s:2},{l:"면",s:3},{l:"토핑",s:3},{l:"풍미",s:4}] },
+            { id: 13, type: "마제탄탄", name: "칸다소바", lat: 37.5772, lng: 126.9725, badge: "마제 본좌", location: "서울 경복궁", flavor: "62가지 재료가 폭발하는 마제소바", stats: [{l:"염도",s:4},{l:"농도",s:5},{l:"면",s:5},{l:"토핑",s:5},{l:"풍미",s:5}] },
+            { id: 14, type: "마제탄탄", name: "멘텐", lat: 37.5612, lng: 126.9882, badge: "미슐랭", location: "서울 명동", flavor: "장인이 만드는 탄탄멘 예술", stats: [{l:"염도",s:3},{l:"농도",s:3},{l:"면",s:3},{l:"토핑",s:4},{l:"풍미",s:4}] },
+            { id: 15, type: "돈코츠", name: "오레노(강남)", lat: 37.4985, lng: 127.0285, badge: "강남점", location: "서울 강남", flavor: "강남에서도 즐기는 오레노의 맛", stats: [{l:"염도",s:4},{l:"농도",s:5},{l:"면",s:2},{l:"토핑",s:3},{l:"풍미",s:4}] },
+            { id: 16, type: "기타", name: "유즈라멘", lat: 37.5548, lng: 126.9675, badge: "유자향", location: "서울 서울역", flavor: "유자 착즙액을 넣은 상큼한 라멘", stats: [{l:"염도",s:3},{l:"농도",s:2},{l:"면",s:1},{l:"토핑",s:4},{l:"풍미",s:5}] },
+            { id: 17, type: "시오쇼유", name: "부탄츄", lat: 37.5565, lng: 126.9355, badge: "커스텀", location: "서울 신촌", flavor: "내 맘대로 면과 소스를 고르는 재미", stats: [{l:"염도",s:4},{l:"농도",s:4},{l:"면",s:3},{l:"토핑",s:4},{l:"풍미",s:3}] },
+            { id: 18, type: "돈코츠", name: "가마마루이", lat: 37.5585, lng: 126.9368, badge: "무한리필", location: "서울 신촌", flavor: "밥과 마파두부가 공짜인 가성비 맛집", stats: [{l:"염도",s:3},{l:"농도",s:4},{l:"면",s:1},{l:"토핑",s:3},{l:"풍미",s:3}] },
+            { id: 19, type: "돈코츠", name: "나가하마", lat: 35.1633, lng: 129.1595, badge: "부산 1티어", location: "부산 해운대", flavor: "36시간 고아낸 정통 하카타 돈코츠", stats: [{l:"염도",s:5},{l:"농도",s:4},{l:"면",s:1},{l:"토핑",s:3},{l:"풍미",s:4}] },
+            { id: 20, type: "기타", name: "류센소", lat: 35.1618, lng: 129.1632, badge: "굴라멘", location: "부산 해운대", flavor: "겨울철 별미, 시원한 굴 육수의 감칠맛", stats: [{l:"염도",s:4},{l:"농도",s:2},{l:"면",s:2},{l:"토핑",s:4},{l:"풍미",s:5}] },
+            { id: 21, type: "돈코츠", name: "복동이네", lat: 35.2315, lng: 129.0845, badge: "오지상", location: "부산 부산대", flavor: "진짜 일본인이 만드는 진한 돈코츠", stats: [{l:"염도",s:5},{l:"농도",s:5},{l:"면",s:1},{l:"토핑",s:3},{l:"풍미",s:4}] },
+            { id: 22, type: "마제탄탄", name: "칸다(서면)", lat: 35.1555, lng: 129.0615, badge: "웨이팅", location: "부산 서면", flavor: "서면에서도 줄 서서 먹는 마제소바", stats: [{l:"염도",s:4},{l:"농도",s:5},{l:"면",s:5},{l:"토핑",s:5},{l:"풍미",s:5}] },
+            { id: 23, type: "시오쇼유", name: "쿠카이야", lat: 35.2305, lng: 129.0855, badge: "자가제면", location: "부산 부산대", flavor: "직접 뽑은 면발이 살아있는 곳", stats: [{l:"염도",s:3},{l:"농도",s:3},{l:"면",s:5},{l:"토핑",s:3},{l:"풍미",s:3}] },
+            { id: 24, type: "시오쇼유", name: "츄카소바설", lat: 35.8695, lng: 128.5955, badge: "대구 1등", location: "대구 중구", flavor: "대구 라멘의 자존심, 맑은 육수", stats: [{l:"염도",s:3},{l:"농도",s:2},{l:"면",s:3},{l:"토핑",s:4},{l:"풍미",s:5}] },
+            { id: 25, type: "돈코츠", name: "라멘왓타시", lat: 36.3535, lng: 127.3825, badge: "대전 명물", location: "대전 서구", flavor: "대전에서 맛보는 진한 교카이 돈코츠", stats: [{l:"염도",s:4},{l:"농도",s:5},{l:"면",s:2},{l:"토핑",s:4},{l:"풍미",s:4}] },
+            { id: 26, type: "돈코츠", name: "코이라멘", lat: 37.3655, lng: 127.1065, badge: "분당 축복", location: "경기 정자", flavor: "한국형 돈코츠 라멘의 대중적 성공", stats: [{l:"염도",s:4},{l:"농도",s:4},{l:"면",s:2},{l:"토핑",s:3},{l:"풍미",s:3}] },
+            { id: 27, type: "마제탄탄", name: "멘야하나비", lat: 37.5105, lng: 127.1125, badge: "원조", location: "서울 잠실", flavor: "나고야 마제소바의 원조", stats: [{l:"염도",s:5},{l:"농도",s:5},{l:"면",s:5},{l:"토핑",s:5},{l:"풍미",s:5}] },
+            { id: 28, type: "돈코츠", name: "우마이도", lat: 37.5405, lng: 127.0695, badge: "건대 맛집", location: "서울 건대", flavor: "자가제면 하카타 돈코츠의 터줏대감", stats: [{l:"염도",s:4},{l:"농도",s:3},{l:"면",s:1},{l:"토핑",s:3},{l:"풍미",s:3}] },
+            { id: 29, type: "기타", name: "무신", lat: 37.5482, lng: 126.9185, badge: "매운맛", location: "서울 상수", flavor: "해장으로 완벽한 매운 라멘", stats: [{l:"염도",s:4},{l:"농도",s:3},{l:"면",s:2},{l:"토핑",s:4},{l:"풍미",s:4}] },
+            { id: 30, type: "시오쇼유", name: "오로지", lat: 37.5705, lng: 126.9825, badge: "직장인", location: "서울 종각", flavor: "점심시간 직장인들의 소울 푸드", stats: [{l:"염도",s:3},{l:"농도",s:3},{l:"면",s:2},{l:"토핑",s:3},{l:"풍미",s:3}] }
+        ];
+
+        let map;
+        let markers = []; 
+        let currentDetailId = null;
+
+        function initMap() {
+            const container = document.getElementById('main-map');
+            const options = { center: new kakao.maps.LatLng(37.5555, 126.9255), level: 8 };
+            map = new kakao.maps.Map(container, options);
+            map.setMaxLevel(13);
+
+            filterMap('all');
+        }
+
+        function filterMap(type) {
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+
+            // 🔥 [수정됨] 버튼 스타일 로직: 버튼의 텍스트가 아닌 'onclick' 속성을 확인하여 색칠함
+            const buttons = document.querySelectorAll('.filter-btn');
+            buttons.forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.getAttribute('onclick').includes(`'${type}'`)) {
+                    btn.classList.add('active');
+                }
+            });
+
+            let filteredDB;
+            if (type === 'all') filteredDB = ramenDB;
+            else if (type === '시오쇼유') filteredDB = ramenDB.filter(s => s.type === '시오쇼유');
+            else if (type === '마제탄탄') filteredDB = ramenDB.filter(s => s.type === '마제탄탄');
+            else if (type === '돈코츠') filteredDB = ramenDB.filter(s => s.type === '돈코츠');
+            else filteredDB = ramenDB.filter(s => s.type === '기타');
+
+            filteredDB.forEach(shop => {
+                const position = new kakao.maps.LatLng(shop.lat, shop.lng);
+                const content = `
+                    <div class="customoverlay" onclick="openDetail(${shop.id})">
+                        <div class="gold-dot"></div>
+                    </div>`;
+                const customOverlay = new kakao.maps.CustomOverlay({
+                    position: position, content: content, yAnchor: 0.5
+                });
+                customOverlay.setMap(map);
+                markers.push(customOverlay);
+            });
+        }
+
+        function openDetail(id) {
+            const shop = ramenDB.find(s => s.id === id);
+            if(!shop) return;
+            currentDetailId = id;
+
+            document.getElementById('detail-badge').innerText = shop.badge;
+            document.getElementById('detail-title').innerHTML = `${shop.name}라멘 <span class="lantern-icon">🏮</span>`;
+            document.getElementById('detail-desc').innerText = shop.location;
+            document.getElementById('detail-flavor').innerText = `"${shop.flavor}"`;
+            renderStamps(shop.stats);
+            checkVisitStatus(id);
+
+            document.getElementById('detail-view').classList.remove('hidden');
+            map.panTo(new kakao.maps.LatLng(shop.lat, shop.lng));
+        }
+
+        function verifyVisit() {
+            if(!currentDetailId) return;
+            if (!navigator.geolocation) {
+                alert("이 브라우저는 GPS를 지원하지 않습니다. 😭");
+                return;
+            }
+            const btn = document.getElementById('btn-verify');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "📡 위치 확인 중... (잠시만요)";
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const myLat = position.coords.latitude;
+                    const myLng = position.coords.longitude;
+                    const shop = ramenDB.find(s => s.id === currentDetailId);
+                    const distance = getDistance(myLat, myLng, shop.lat, shop.lng);
+
+                    if (distance <= 500) {
+                        localStorage.setItem(`visited_${currentDetailId}`, 'true');
+                        checkVisitStatus(currentDetailId);
+                        alert(`🎉 인증 성공!\n가게와의 거리: ${Math.round(distance)}m\n도장이 쾅 찍혔습니다!`);
+                    } else {
+                        btn.innerHTML = originalText;
+                        alert(`🚫 인증 실패!\n가게랑 너무 멀어요.\n현재 거리: ${Math.round(distance)}m\n(500m 안으로 와야 합니다!)`);
+                    }
+                },
+                (error) => {
+                    btn.innerHTML = originalText;
+                    alert("위치 정보를 가져올 수 없습니다.\n스마트폰의 '위치(GPS)'를 켜주세요!");
+                }
+            );
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        function checkVisitStatus(id) {
+            const isVisited = localStorage.getItem(`visited_${id}`);
+            const btn = document.getElementById('btn-verify');
+            const msg = document.getElementById('passport-msg');
+
+            if (isVisited) {
+                btn.innerHTML = "✅ 정복 완료 (인증됨)";
+                btn.classList.add('verified');
+                btn.disabled = true;
+                msg.innerText = "훌륭합니다! 면식 수행을 완료하셨군요.";
+            } else {
+                btn.innerHTML = "📍 가게 방문 인증하기 (도장 쾅!)";
+                btn.classList.remove('verified');
+                btn.disabled = false;
+                msg.innerText = "가게 근처(500m)에서 버튼을 눌러주세요.";
+            }
+        }
+
+        function closeDetail() {
+            document.getElementById('detail-view').classList.add('hidden');
+        }
+
+        function renderStamps(stats) {
+            const container = document.getElementById('ramen-stats');
+            container.innerHTML = '';
+            stats.forEach((stat, idx) => {
+                const row = document.createElement('div');
+                row.className = 'stat-row';
+                row.innerHTML = `<div class="stat-label">${stat.l}</div>
+                    <div class="stat-stamps">${Array(5).fill(0).map((_, i) => 
+                        `<div class="stamp ${i < stat.s ? 'filled' : ''}" style="transition-delay:${idx*0.05 + i*0.05}s"></div>`
+                    ).join('')}</div>`;
+                container.appendChild(row);
+            });
+        }
+
+        function createCherryBlossoms() {
+            const container = document.getElementById('cherry-container');
+            for (let i = 0; i < 15; i++) {
+                const petal = document.createElement('span');
+                petal.style.left = `${Math.random() * 100}%`;
+                petal.style.animationDuration = `${Math.random() * 5 + 5}s`;
+                container.appendChild(petal);
+            }
+        }
+
+        window.addEventListener('load', () => {
+            initMap();
+            createCherryBlossoms();
+        });
+    </script>
+</body>
+</html>
